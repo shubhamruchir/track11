@@ -6,17 +6,70 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// Environment variables (SET THESE IN RENDER)
-const SHOP = process.env.SHOP; 
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+// ENV VARIABLES (SET IN RENDER)
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const SHOP = "cartigo.shop";
 
-// Normalize order ID (remove # if user enters it)
+// ⚠️ STORE THIS TOKEN AFTER OAUTH
+let ACCESS_TOKEN = "";
+
+// =============================
+// 🔐 STEP 1: START OAUTH
+// =============================
+app.get("/auth", (req, res) => {
+  const redirectUri = `https://${req.headers.host}/auth/callback`;
+
+  const installUrl = `https://${SHOP}/admin/oauth/authorize?client_id=${CLIENT_ID}&scope=read_orders,read_fulfillments&redirect_uri=${redirectUri}`;
+
+  res.redirect(installUrl);
+});
+
+// =============================
+// 🔐 STEP 2: CALLBACK (GET TOKEN)
+// =============================
+app.get("/auth/callback", async (req, res) => {
+  const { code } = req.query;
+
+  try {
+    const response = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        code
+      })
+    });
+
+    const data = await response.json();
+
+    ACCESS_TOKEN = data.access_token;
+
+    console.log("🔥 ACCESS TOKEN:", ACCESS_TOKEN);
+
+    res.send("App Installed Successfully. You can close this.");
+  } catch (err) {
+    console.error(err);
+    res.send("Error during OAuth");
+  }
+});
+
+// =============================
+// 📦 TRACK ORDER API
+// =============================
 function normalizeOrderId(id) {
   return id.replace("#", "").trim();
 }
 
 app.post("/track", async (req, res) => {
   const { email, orderId } = req.body;
+
+  if (!ACCESS_TOKEN) {
+    return res.json({ error: "App not authenticated yet" });
+  }
 
   try {
     const cleanOrderId = normalizeOrderId(orderId);
@@ -39,7 +92,6 @@ app.post("/track", async (req, res) => {
 
     const order = data.orders[0];
 
-    // Validate email
     if (order.email !== email) {
       return res.json({ error: "Order not found" });
     }
@@ -49,7 +101,7 @@ app.post("/track", async (req, res) => {
     res.json({
       orderId: order.name,
       status: order.fulfillment_status || "Processing",
-      tracking: fulfillment?.tracking_url || "",
+      tracking: fulfillment?.tracking_url || ""
     });
 
   } catch (err) {
@@ -58,6 +110,9 @@ app.post("/track", async (req, res) => {
   }
 });
 
+// =============================
+// ROOT CHECK
+// =============================
 app.get("/", (req, res) => {
   res.send("Tracking API Running");
 });
