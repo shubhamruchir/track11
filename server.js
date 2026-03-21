@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 10000;
 // ENV VARIABLES
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const SHOP = "cartigo.shop";
+const SHOP = "jqxazi-4v.myshopify.com";
 
 // TEMP TOKEN STORAGE
 let ACCESS_TOKEN = "";
