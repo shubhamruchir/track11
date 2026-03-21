@@ -10,13 +10,13 @@ app.get("/auth/callback", async (req, res) => {
       body: JSON.stringify({
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        code
+        code: code
       })
     });
 
     const data = await response.json();
 
-    console.log("FULL RESPONSE:", data); // 👈 IMPORTANT
+    console.log("FULL RESPONSE:", data);
 
     if (data.error) {
       return res.send("OAuth error: " + JSON.stringify(data));
@@ -25,7 +25,7 @@ app.get("/auth/callback", async (req, res) => {
     res.send("SUCCESS: " + data.access_token);
 
   } catch (err) {
-    console.error("CATCH ERROR:", err);
+    console.error("ERROR:", err);
     res.send("OAuth crash");
   }
 });
