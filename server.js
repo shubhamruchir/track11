@@ -1,6 +1,5 @@
 import express from "express";
 import fetch from "node-fetch";
-import crypto from "crypto";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -17,20 +16,18 @@ app.use((req, res, next) => {
 
 const PORT = process.env.PORT || 10000;
 
-// 🔐 ENV
+// 🔐 ENV VARIABLES
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const SHOP = process.env.SHOP;
 const REDIRECT_URI = process.env.REDIRECT_URI;
-
-// ⚠️ Store token (temporary)
 let ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
 
 // ------------------------
-// 🚀 AUTH START
+// 🚀 AUTH
 // ------------------------
 app.get("/auth", (req, res) => {
-  if (!CLIENT_ID) return res.send("CLIENT_ID missing in ENV");
+  if (!CLIENT_ID) return res.send("CLIENT_ID missing");
 
   const installUrl = `https://${SHOP}/admin/oauth/authorize?client_id=${CLIENT_ID}&scope=read_orders,read_fulfillments&redirect_uri=${REDIRECT_URI}`;
 
@@ -44,67 +41,88 @@ app.get("/auth/callback", async (req, res) => {
   try {
     const { code } = req.query;
 
-    const tokenRes = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
+    const response = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        code
-      })
+        code,
+      }),
     });
 
-    const data = await tokenRes.json();
+    const data = await response.json();
 
     if (!data.access_token) {
-      console.log("ERROR:", data);
+      console.log("OAuth error:", data);
       return res.send("OAuth failed");
     }
 
     ACCESS_TOKEN = data.access_token;
 
-    console.log("ACCESS TOKEN:", ACCESS_TOKEN);
+    console.log("🔥 ACCESS TOKEN:", ACCESS_TOKEN);
 
     res.send("SUCCESS: App installed");
   } catch (err) {
-    console.error(err);
+    console.error("OAuth crash:", err);
     res.send("OAuth crash");
   }
 });
 
 // ------------------------
-// 📦 TRACK ORDER API
+// 📦 TRACK ORDER
 // ------------------------
 app.post("/track", async (req, res) => {
   try {
     const { email, orderId } = req.body;
 
+    if (!email || !orderId) {
+      return res.json({ error: "Missing email or orderId" });
+    }
+
     if (!ACCESS_TOKEN) {
       return res.json({ error: "Access token missing" });
     }
 
-    const response = await fetch(
-      `https://${SHOP}/admin/api/2023-10/orders.json?status=any`,
+    console.log("➡️ Request:", email, orderId);
+
+    const shopifyRes = await fetch(
+      `https://${SHOP}/admin/api/2023-10/orders.json?status=any&limit=50`,
       {
+        method: "GET",
         headers: {
-          "X-Shopify-Access-Token": ACCESS_TOKEN
-        }
+          "X-Shopify-Access-Token": ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    const data = await response.json();
+    const raw = await shopifyRes.text();
+    console.log("🧾 RAW RESPONSE:", raw);
 
-    if (!data.orders) {
-      return res.json({ error: "Invalid Shopify response" });
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return res.json({ error: "Invalid JSON from Shopify" });
     }
 
-    const order = data.orders.find(
-      (o) =>
+    if (!data.orders) {
+      return res.json({ error: "No orders returned" });
+    }
+
+    const cleanOrderId = orderId.replace("#", "").trim();
+
+    const order = data.orders.find((o) => {
+      return (
         o.email === email &&
-        (o.name === orderId || o.name === `#${orderId}` || o.order_number == orderId)
-    );
+        (o.name === orderId ||
+          o.name === `#${cleanOrderId}` ||
+          o.order_number == cleanOrderId)
+      );
+    });
 
     if (!order) {
       return res.json({ error: "Order not found" });
@@ -115,11 +133,11 @@ app.post("/track", async (req, res) => {
     res.json({
       orderId: order.name,
       status: order.fulfillment_status || "unfulfilled",
-      tracking: fulfillment?.tracking_url || "No tracking yet"
+      tracking: fulfillment?.tracking_url || "No tracking available",
     });
   } catch (err) {
-    console.error(err);
-    res.json({ error: "Server error" });
+    console.error("🔥 TRACK ERROR:", err);
+    res.json({ error: err.message });
   }
 });
 
@@ -130,5 +148,5 @@ app.get("/", (req, res) => {
 
 // ------------------------
 app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
