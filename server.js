@@ -11,7 +11,7 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const SHOP = "jqxazi-4v.myshopify.com";
 
 // TEMP TOKEN STORAGE
-let ACCESS_TOKEN = "";
+let ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
 
 // =============================
 // ROOT
