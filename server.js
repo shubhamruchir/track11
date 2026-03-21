@@ -7,7 +7,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// ✅ CORS FIX
+// ✅ CORS
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Headers", "Content-Type");
@@ -16,70 +16,12 @@ app.use((req, res, next) => {
 
 const PORT = process.env.PORT || 10000;
 
-// 🔐 ENV VARIABLES
-const CLIENT_ID = process.env.CLIENT_ID;
-const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const SHOP = process.env.SHOP; // MUST be correct
-const REDIRECT_URI = process.env.REDIRECT_URI;
+// ENV
+const SHOP = process.env.SHOP;
 let ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
 
-// 🔍 DEBUG (IMPORTANT)
-console.log("CLIENT_ID:", CLIENT_ID);
-console.log("SHOP:", SHOP);
-console.log("ACCESS_TOKEN:", ACCESS_TOKEN ? "Loaded" : "Missing");
-
 // ------------------------
-// 🚀 AUTH
-// ------------------------
-app.get("/auth", (req, res) => {
-  if (!CLIENT_ID || !SHOP) {
-    return res.send("Missing CLIENT_ID or SHOP in ENV");
-  }
-
-  const installUrl = `https://${SHOP}/admin/oauth/authorize?client_id=${CLIENT_ID}&scope=read_orders,read_fulfillments&redirect_uri=${REDIRECT_URI}`;
-
-  res.redirect(installUrl);
-});
-
-// ------------------------
-// 🔁 CALLBACK
-// ------------------------
-app.get("/auth/callback", async (req, res) => {
-  try {
-    const { code } = req.query;
-
-    const response = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        code,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!data.access_token) {
-      console.log("OAuth error:", data);
-      return res.send("OAuth failed");
-    }
-
-    ACCESS_TOKEN = data.access_token;
-
-    console.log("🔥 NEW ACCESS TOKEN:", ACCESS_TOKEN);
-
-    res.send("SUCCESS: App installed");
-  } catch (err) {
-    console.error("OAuth crash:", err);
-    res.send("OAuth crash");
-  }
-});
-
-// ------------------------
-// 📦 TRACK ORDER
+// TRACK ORDER API
 // ------------------------
 app.post("/track", async (req, res) => {
   try {
@@ -97,12 +39,9 @@ app.post("/track", async (req, res) => {
       return res.json({ error: "Access token missing" });
     }
 
-    console.log("➡️ Request:", email, orderId);
-
     const shopifyRes = await fetch(
       `https://${SHOP}/admin/api/2023-10/orders.json?status=any&limit=50`,
       {
-        method: "GET",
         headers: {
           "X-Shopify-Access-Token": ACCESS_TOKEN,
           "Content-Type": "application/json",
@@ -110,18 +49,10 @@ app.post("/track", async (req, res) => {
       }
     );
 
-    const raw = await shopifyRes.text();
-    console.log("🧾 RAW SHOPIFY:", raw);
-
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch (e) {
-      return res.json({ error: "Invalid JSON from Shopify" });
-    }
+    const data = await shopifyRes.json();
 
     if (!data.orders) {
-      return res.json({ error: "No orders returned from Shopify" });
+      return res.json({ error: "No orders found" });
     }
 
     const cleanId = orderId.replace("#", "").trim();
@@ -144,11 +75,14 @@ app.post("/track", async (req, res) => {
     res.json({
       orderId: order.name,
       status: order.fulfillment_status || "unfulfilled",
-      tracking: fulfillment?.tracking_url || "No tracking available",
+      awb: fulfillment?.tracking_number || "Not available",
+      courier: fulfillment?.tracking_company || "Not available",
+      estimatedDelivery: "3-5 Days" // static (can upgrade later)
     });
+
   } catch (err) {
-    console.error("🔥 TRACK ERROR:", err);
-    res.json({ error: err.message });
+    console.error("ERROR:", err);
+    res.json({ error: "Server error" });
   }
 });
 
@@ -159,5 +93,5 @@ app.get("/", (req, res) => {
 
 // ------------------------
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });
