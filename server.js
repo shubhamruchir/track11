@@ -19,15 +19,22 @@ const PORT = process.env.PORT || 10000;
 // 🔐 ENV VARIABLES
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const SHOP = process.env.SHOP;
+const SHOP = process.env.SHOP; // MUST be correct
 const REDIRECT_URI = process.env.REDIRECT_URI;
 let ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
+
+// 🔍 DEBUG (IMPORTANT)
+console.log("CLIENT_ID:", CLIENT_ID);
+console.log("SHOP:", SHOP);
+console.log("ACCESS_TOKEN:", ACCESS_TOKEN ? "Loaded" : "Missing");
 
 // ------------------------
 // 🚀 AUTH
 // ------------------------
 app.get("/auth", (req, res) => {
-  if (!CLIENT_ID) return res.send("CLIENT_ID missing");
+  if (!CLIENT_ID || !SHOP) {
+    return res.send("Missing CLIENT_ID or SHOP in ENV");
+  }
 
   const installUrl = `https://${SHOP}/admin/oauth/authorize?client_id=${CLIENT_ID}&scope=read_orders,read_fulfillments&redirect_uri=${REDIRECT_URI}`;
 
@@ -62,7 +69,7 @@ app.get("/auth/callback", async (req, res) => {
 
     ACCESS_TOKEN = data.access_token;
 
-    console.log("🔥 ACCESS TOKEN:", ACCESS_TOKEN);
+    console.log("🔥 NEW ACCESS TOKEN:", ACCESS_TOKEN);
 
     res.send("SUCCESS: App installed");
   } catch (err) {
@@ -80,6 +87,10 @@ app.post("/track", async (req, res) => {
 
     if (!email || !orderId) {
       return res.json({ error: "Missing email or orderId" });
+    }
+
+    if (!SHOP) {
+      return res.json({ error: "SHOP not configured" });
     }
 
     if (!ACCESS_TOKEN) {
@@ -100,7 +111,7 @@ app.post("/track", async (req, res) => {
     );
 
     const raw = await shopifyRes.text();
-    console.log("🧾 RAW RESPONSE:", raw);
+    console.log("🧾 RAW SHOPIFY:", raw);
 
     let data;
     try {
@@ -110,17 +121,17 @@ app.post("/track", async (req, res) => {
     }
 
     if (!data.orders) {
-      return res.json({ error: "No orders returned" });
+      return res.json({ error: "No orders returned from Shopify" });
     }
 
-    const cleanOrderId = orderId.replace("#", "").trim();
+    const cleanId = orderId.replace("#", "").trim();
 
     const order = data.orders.find((o) => {
       return (
         o.email === email &&
         (o.name === orderId ||
-          o.name === `#${cleanOrderId}` ||
-          o.order_number == cleanOrderId)
+          o.name === `#${cleanId}` ||
+          o.order_number == cleanId)
       );
     });
 
