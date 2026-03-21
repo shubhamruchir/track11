@@ -70,16 +70,30 @@ app.post("/track", async (req, res) => {
       return res.json({ error: "Order not found" });
     }
 
-    // ✅ SAFE fulfillment handling
+    // ✅ Safe fulfillment handling
     const fulfillment =
       order.fulfillments && order.fulfillments.length > 0
         ? order.fulfillments[0]
         : null;
 
+    // ✅ SMART TRACKING NUMBER LOGIC
+    let trackingNumber = "Not available";
+
+    if (fulfillment) {
+      if (fulfillment.tracking_number) {
+        trackingNumber = fulfillment.tracking_number;
+      } else if (
+        fulfillment.tracking_numbers &&
+        fulfillment.tracking_numbers.length > 0
+      ) {
+        trackingNumber = fulfillment.tracking_numbers[0];
+      }
+    }
+
     res.json({
       orderId: order.name,
       status: fulfillment ? "Shipped" : "Processing",
-      trackingNumber: fulfillment?.tracking_number || "Not generated yet",
+      trackingNumber: trackingNumber,
       courier: fulfillment?.tracking_company || "Not assigned",
       estimatedDelivery: fulfillment
         ? "3-5 Days"
