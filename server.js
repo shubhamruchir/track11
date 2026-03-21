@@ -36,7 +36,7 @@ app.get("/auth", (req, res) => {
 });
 
 // =============================
-// CALLBACK
+// CALLBACK (DEBUG VERSION)
 // =============================
 app.get("/auth/callback", async (req, res) => {
   const { code } = req.query;
@@ -54,9 +54,16 @@ app.get("/auth/callback", async (req, res) => {
       })
     });
 
-    const data = await response.json();
+    const text = await response.text();
 
-    console.log("🔥 FULL RESPONSE:", data);
+    console.log("RAW RESPONSE:", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return res.send("Invalid JSON from Shopify: " + text);
+    }
 
     if (data.error) {
       return res.send("OAuth error: " + JSON.stringify(data));
@@ -64,13 +71,13 @@ app.get("/auth/callback", async (req, res) => {
 
     ACCESS_TOKEN = data.access_token;
 
-    console.log("✅ ACCESS TOKEN:", ACCESS_TOKEN);
+    console.log("ACCESS TOKEN:", ACCESS_TOKEN);
 
-    res.send("App installed successfully!");
+    res.send("SUCCESS: App installed");
 
   } catch (err) {
-    console.error("❌ ERROR:", err);
-    res.send("OAuth crash");
+    console.error("REAL ERROR:", err);
+    res.send("OAuth crash: " + err.message);
   }
 });
 
@@ -129,5 +136,5 @@ app.post("/track", async (req, res) => {
 
 // =============================
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });
