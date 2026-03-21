@@ -6,18 +6,22 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// ENV VARIABLES (SET IN RENDER)
+// ✅ ENV VARIABLES
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const SHOP = "cartigo.shop";
 
-// ⚠️ STORE THIS TOKEN AFTER OAUTH
-let ACCESS_TOKEN = "";
+// ⚠️ Store token (for now in memory, better to move to DB later)
+let ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
 
 // =============================
-// 🔐 STEP 1: START OAUTH
+// 🔐 START OAUTH
 // =============================
 app.get("/auth", (req, res) => {
+  if (!CLIENT_ID) {
+    return res.send("CLIENT_ID missing in ENV");
+  }
+
   const redirectUri = `https://${req.headers.host}/auth/callback`;
 
   const installUrl = `https://${SHOP}/admin/oauth/authorize?client_id=${CLIENT_ID}&scope=read_orders,read_fulfillments&redirect_uri=${redirectUri}`;
@@ -26,7 +30,7 @@ app.get("/auth", (req, res) => {
 });
 
 // =============================
-// 🔐 STEP 2: CALLBACK (GET TOKEN)
+// 🔐 CALLBACK (GET TOKEN)
 // =============================
 app.get("/auth/callback", async (req, res) => {
   const { code } = req.query;
@@ -46,14 +50,18 @@ app.get("/auth/callback", async (req, res) => {
 
     const data = await response.json();
 
+    if (!data.access_token) {
+      return res.send("Failed to get access token");
+    }
+
     ACCESS_TOKEN = data.access_token;
 
     console.log("🔥 ACCESS TOKEN:", ACCESS_TOKEN);
 
-    res.send("App Installed Successfully. You can close this.");
+    res.send("App installed successfully. Token generated.");
   } catch (err) {
     console.error(err);
-    res.send("Error during OAuth");
+    res.send("OAuth error");
   }
 });
 
