@@ -70,16 +70,21 @@ app.post("/track", async (req, res) => {
       return res.json({ error: "Order not found" });
     }
 
-    const fulfillment = order.fulfillments?.[0];
+    // ✅ SAFE fulfillment handling
+    const fulfillment =
+      order.fulfillments && order.fulfillments.length > 0
+        ? order.fulfillments[0]
+        : null;
 
     res.json({
       orderId: order.name,
-      status: order.fulfillment_status || "unfulfilled",
-      awb: fulfillment?.tracking_number || "Not available",
-      courier: fulfillment?.tracking_company || "Not available",
-      estimatedDelivery: "3-5 Days" // static (can upgrade later)
+      status: fulfillment ? "Shipped" : "Processing",
+      trackingNumber: fulfillment?.tracking_number || "Not generated yet",
+      courier: fulfillment?.tracking_company || "Not assigned",
+      estimatedDelivery: fulfillment
+        ? "3-5 Days"
+        : "Will be updated after dispatch",
     });
-
   } catch (err) {
     console.error("ERROR:", err);
     res.json({ error: "Server error" });
