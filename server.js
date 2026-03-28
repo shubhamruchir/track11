@@ -16,7 +16,7 @@ app.use((req, res, next) => {
 
 const PORT = process.env.PORT || 10000;
 
-// ENV
+// ENV VARIABLES
 const SHOP = process.env.SHOP;
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -54,7 +54,7 @@ async function getAccessToken() {
   return activeToken;
 }
 
-// ✅ SUPER COURIER DETECTOR (Enhanced)
+// ✅ SUPER COURIER DETECTOR (With Delhivery Fix)
 function getCourierLink(courier, trackingNumber) {
   if (!trackingNumber || trackingNumber === "Not available") return null;
 
@@ -62,9 +62,9 @@ function getCourierLink(courier, trackingNumber) {
   const c = (courier || "").toLowerCase();
 
   // Indian Logistics
-  if (c.includes("delhivery")) return `https://www.delhivery.com/tracking/?id=${trackingNumber}`;
+  if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; // ✅ FIXED LINK
   if (c.includes("ekart")) return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
-  if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`; // Amazon Surface/Shipping India uses Swiship
+  if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`;
   if (c.includes("bluedart") || c.includes("blue dart")) return `https://www.bluedart.com/tracking?track=${trackingNumber}`;
   if (c.includes("ecom") || c.includes("ecom express")) return `https://ecomexpress.in/tracking/?awb_field=${trackingNumber}`;
   if (c.includes("xpressbees")) return `https://www.xpressbees.com/track?awb=${trackingNumber}`;
@@ -163,7 +163,7 @@ app.post("/track", async (req, res) => {
       status: fulfillment ? "Shipped" : "Processing",
       trackingNumber: trackingNumber,
       courier: courierName,
-      trackingUrl: trackingUrl, // ✅ Send the link to the frontend
+      trackingUrl: trackingUrl, 
       estimatedDelivery: fulfillment
         ? "3-5 Days"
         : "Will be updated after dispatch",
