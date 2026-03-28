@@ -54,7 +54,7 @@ async function getAccessToken() {
   return activeToken;
 }
 
-// ✅ SUPER COURIER DETECTOR 
+// ✅ SUPER COURIER DETECTOR (With Delhivery Fix)
 function getCourierLink(courier, trackingNumber) {
   if (!trackingNumber || trackingNumber === "Not available") return null;
 
@@ -62,7 +62,7 @@ function getCourierLink(courier, trackingNumber) {
   const c = (courier || "").toLowerCase();
 
   // Indian Logistics
-  if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; // Fixed Link
+  if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; 
   if (c.includes("ekart")) return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
   if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`;
   if (c.includes("bluedart") || c.includes("blue dart")) return `https://www.bluedart.com/tracking?track=${trackingNumber}`;
@@ -158,23 +158,30 @@ app.post("/track", async (req, res) => {
     const courierName = fulfillment?.tracking_company || "Not assigned";
     const trackingUrl = getCourierLink(courierName, trackingNumber);
 
-    // ✅ NEW DYNAMIC DATE CALCULATOR
+    // ✅ GET REAL SHIPMENT STATUS IF SHOPIFY HAS IT
+    let shipmentStatus = "Processing";
+    if (fulfillment) {
+      shipmentStatus = "Shipped"; // Fallback if no specific status exists
+      if (fulfillment.shipment_status) {
+        shipmentStatus = fulfillment.shipment_status; // Gets 'in_transit', 'out_for_delivery', 'delivered'
+      }
+    }
+
+    // ✅ NEW DYNAMIC DATE CALCULATOR (Fallback Estimate)
     let estimatedDeliveryDate = "Updating...";
     if (fulfillment && fulfillment.created_at) {
-      // If shipped, estimate 4 days from fulfillment date
       const d = new Date(fulfillment.created_at);
-      d.setDate(d.getDate() + 4);
-      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      d.setDate(d.getDate() + 4); // Estimate 4 days from shipping
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + " (Est.)";
     } else if (order && order.created_at) {
-      // If not shipped yet, estimate 6 days from order date
       const d = new Date(order.created_at);
-      d.setDate(d.getDate() + 6);
-      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      d.setDate(d.getDate() + 6); // Estimate 6 days from order placement
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + " (Est.)";
     }
 
     res.json({
       orderId: order.name,
-      status: fulfillment ? "Shipped" : "Processing",
+      status: shipmentStatus, // ✅ Now passes the true Shopify status for the timeline
       trackingNumber: trackingNumber,
       courier: courierName,
       trackingUrl: trackingUrl, 
@@ -188,7 +195,7 @@ app.post("/track", async (req, res) => {
 
 // ------------------------
 app.get("/", (req, res) => {
-  res.send("Tracking API with Dynamic Dates Running");
+  res.send("Enhanced Tracking API with Dynamic Timelines Running");
 });
 
 // ------------------------
