@@ -54,7 +54,7 @@ async function getAccessToken() {
   return activeToken;
 }
 
-// ✅ SUPER COURIER DETECTOR (With Delhivery Fix)
+// ✅ SUPER COURIER DETECTOR 
 function getCourierLink(courier, trackingNumber) {
   if (!trackingNumber || trackingNumber === "Not available") return null;
 
@@ -62,7 +62,7 @@ function getCourierLink(courier, trackingNumber) {
   const c = (courier || "").toLowerCase();
 
   // Indian Logistics
-  if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; // ✅ FIXED LINK
+  if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; // Fixed Link
   if (c.includes("ekart")) return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
   if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`;
   if (c.includes("bluedart") || c.includes("blue dart")) return `https://www.bluedart.com/tracking?track=${trackingNumber}`;
@@ -77,7 +77,7 @@ function getCourierLink(courier, trackingNumber) {
   if (c.includes("dhl")) return `https://www.dhl.com/in-en/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNumber}`;
   if (c.includes("ups")) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
   
-  // Universal Fallback for literally "whatsoever" else
+  // Universal Fallback
   return `https://parcelsapp.com/en/tracking/${trackingNumber}`;
 }
 
@@ -158,15 +158,27 @@ app.post("/track", async (req, res) => {
     const courierName = fulfillment?.tracking_company || "Not assigned";
     const trackingUrl = getCourierLink(courierName, trackingNumber);
 
+    // ✅ NEW DYNAMIC DATE CALCULATOR
+    let estimatedDeliveryDate = "Updating...";
+    if (fulfillment && fulfillment.created_at) {
+      // If shipped, estimate 4 days from fulfillment date
+      const d = new Date(fulfillment.created_at);
+      d.setDate(d.getDate() + 4);
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else if (order && order.created_at) {
+      // If not shipped yet, estimate 6 days from order date
+      const d = new Date(order.created_at);
+      d.setDate(d.getDate() + 6);
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
     res.json({
       orderId: order.name,
       status: fulfillment ? "Shipped" : "Processing",
       trackingNumber: trackingNumber,
       courier: courierName,
       trackingUrl: trackingUrl, 
-      estimatedDelivery: fulfillment
-        ? "3-5 Days"
-        : "Will be updated after dispatch",
+      estimatedDelivery: estimatedDeliveryDate, 
     });
   } catch (err) {
     console.error("ERROR:", err);
@@ -176,7 +188,7 @@ app.post("/track", async (req, res) => {
 
 // ------------------------
 app.get("/", (req, res) => {
-  res.send("Enhanced Tracking API Running");
+  res.send("Tracking API with Dynamic Dates Running");
 });
 
 // ------------------------
