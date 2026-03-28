@@ -26,12 +26,10 @@ let activeToken = null;
 let tokenExpiresAt = null;
 
 async function getAccessToken() {
-  // If we have a token and it's not expiring in the next 5 minutes, reuse it
   if (activeToken && tokenExpiresAt && Date.now() < tokenExpiresAt) {
     return activeToken;
   }
 
-  // Otherwise, ask Shopify for a new token
   const response = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -50,11 +48,37 @@ async function getAccessToken() {
   }
 
   activeToken = data.access_token;
-  // Tokens usually last 24 hours (86400 seconds). We buffer by 5 minutes.
   const expiresInMs = (data.expires_in || 86400) * 1000;
   tokenExpiresAt = Date.now() + expiresInMs - (5 * 60 * 1000);
 
   return activeToken;
+}
+
+// ✅ SUPER COURIER DETECTOR (Enhanced)
+function getCourierLink(courier, trackingNumber) {
+  if (!trackingNumber || trackingNumber === "Not available") return null;
+
+  // Convert courier name to lowercase for easy matching
+  const c = (courier || "").toLowerCase();
+
+  // Indian Logistics
+  if (c.includes("delhivery")) return `https://www.delhivery.com/tracking/?id=${trackingNumber}`;
+  if (c.includes("ekart")) return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
+  if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`; // Amazon Surface/Shipping India uses Swiship
+  if (c.includes("bluedart") || c.includes("blue dart")) return `https://www.bluedart.com/tracking?track=${trackingNumber}`;
+  if (c.includes("ecom") || c.includes("ecom express")) return `https://ecomexpress.in/tracking/?awb_field=${trackingNumber}`;
+  if (c.includes("xpressbees")) return `https://www.xpressbees.com/track?awb=${trackingNumber}`;
+  if (c.includes("shadowfax")) return `https://tracker.shadowfax.in/track?order=true&awb=${trackingNumber}`;
+  if (c.includes("dtdc")) return `https://track.dtdc.in/ctbs-tracking/customerInterface.tr?wAction=infodeskTrack&trackType=AWB&strKeys=${trackingNumber}`;
+  if (c.includes("shiprocket")) return `https://www.shiprocket.in/shipment-tracking/?awb=${trackingNumber}`;
+
+  // International Logistics
+  if (c.includes("fedex")) return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  if (c.includes("dhl")) return `https://www.dhl.com/in-en/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNumber}`;
+  if (c.includes("ups")) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  
+  // Universal Fallback for literally "whatsoever" else
+  return `https://parcelsapp.com/en/tracking/${trackingNumber}`;
 }
 
 // ------------------------
@@ -68,15 +92,11 @@ app.post("/track", async (req, res) => {
       return res.json({ error: "Missing email or orderId" });
     }
 
-    if (!SHOP) {
-      return res.json({ error: "SHOP not configured" });
+    if (!SHOP || !CLIENT_ID || !CLIENT_SECRET) {
+      return res.json({ error: "API credentials missing" });
     }
 
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-      return res.json({ error: "Client credentials missing" });
-    }
-
-    // ✅ Get or refresh the token automatically
+    // Get active Shopify token
     let currentToken;
     try {
       currentToken = await getAccessToken();
@@ -84,6 +104,7 @@ app.post("/track", async (req, res) => {
       return res.json({ error: "Access token missing or failed to generate" });
     }
 
+    // Fetch order from Shopify
     const shopifyRes = await fetch(
       `https://${SHOP}/admin/api/2023-10/orders.json?status=any&limit=50`,
       {
@@ -104,7 +125,7 @@ app.post("/track", async (req, res) => {
 
     const order = data.orders.find((o) => {
       return (
-        o.email === email &&
+        o.email.toLowerCase() === email.toLowerCase() &&
         (o.name === orderId ||
           o.name === `#${cleanId}` ||
           o.order_number == cleanId)
@@ -115,15 +136,13 @@ app.post("/track", async (req, res) => {
       return res.json({ error: "Order not found" });
     }
 
-    // ✅ Safe fulfillment handling
+    // Handle fulfillment data
     const fulfillment =
       order.fulfillments && order.fulfillments.length > 0
         ? order.fulfillments[0]
         : null;
 
-    // ✅ SMART TRACKING NUMBER LOGIC
     let trackingNumber = "Not available";
-
     if (fulfillment) {
       if (fulfillment.tracking_number) {
         trackingNumber = fulfillment.tracking_number;
@@ -135,11 +154,16 @@ app.post("/track", async (req, res) => {
       }
     }
 
+    // Generate the tracking URL using our new function
+    const courierName = fulfillment?.tracking_company || "Not assigned";
+    const trackingUrl = getCourierLink(courierName, trackingNumber);
+
     res.json({
       orderId: order.name,
       status: fulfillment ? "Shipped" : "Processing",
       trackingNumber: trackingNumber,
-      courier: fulfillment?.tracking_company || "Not assigned",
+      courier: courierName,
+      trackingUrl: trackingUrl, // ✅ Send the link to the frontend
       estimatedDelivery: fulfillment
         ? "3-5 Days"
         : "Will be updated after dispatch",
@@ -152,7 +176,7 @@ app.post("/track", async (req, res) => {
 
 // ------------------------
 app.get("/", (req, res) => {
-  res.send("Tracking API Running");
+  res.send("Enhanced Tracking API Running");
 });
 
 // ------------------------
