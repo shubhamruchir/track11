@@ -130,10 +130,10 @@ app.post("/track", async (req, res) => {
     const courierName = fulfillment?.tracking_company || "Not assigned";
     const trackingUrl = getCourierLink(courierName, trackingNumber);
 
-    // ✅ READ REAL SHIPMENT STATUS
+    // ✅ READ REAL SHIPMENT STATUS & DEFAULT TO "IN TRANSIT"
     let shipmentStatus = "Processing";
     if (fulfillment) {
-      shipmentStatus = "Shipped"; 
+      shipmentStatus = "in_transit"; // <-- Defaults to In Transit here!
       if (fulfillment.shipment_status) {
         shipmentStatus = fulfillment.shipment_status; 
       }
@@ -142,20 +142,16 @@ app.post("/track", async (req, res) => {
     // ✅ UPGRADED ESTIMATED DELIVERY (Creates a professional Date Range)
     let estimatedDeliveryDate = "Updating...";
     
-    // First, check if Shopify actually has the exact live date from the courier
     if (fulfillment && fulfillment.estimated_delivery_at) {
       const d = new Date(fulfillment.estimated_delivery_at);
       estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-    } 
-    // Otherwise, generate a safe 3-day delivery window
-    else if (fulfillment && fulfillment.created_at) {
+    } else if (fulfillment && fulfillment.created_at) {
       const d1 = new Date(fulfillment.created_at);
-      d1.setDate(d1.getDate() + 4); // Start range 4 days after shipping
+      d1.setDate(d1.getDate() + 4); 
       const d2 = new Date(fulfillment.created_at);
-      d2.setDate(d2.getDate() + 7); // End range 7 days after shipping
+      d2.setDate(d2.getDate() + 7); 
       estimatedDeliveryDate = `${d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-    } 
-    else if (order && order.created_at) {
+    } else if (order && order.created_at) {
       const d1 = new Date(order.created_at);
       d1.setDate(d1.getDate() + 5); 
       const d2 = new Date(order.created_at);
