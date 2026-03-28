@@ -1,180 +1,182 @@
-<style>
-  .track-container { max-width: 500px; margin: 40px auto; padding: 30px; font-family: sans-serif; border: 1px solid #eaeaea; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-  .track-input { width: 100%; padding: 12px; margin-top: 8px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-  .track-btn { width: 100%; background-color: #000; color: #fff; padding: 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px; transition: background 0.3s; }
-  .track-btn:hover { background-color: #333; }
-  
-  .timeline { display: none; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; }
-  .step { display: flex; align-items: center; margin-bottom: 20px; position: relative; }
-  .step:last-child { margin-bottom: 0; }
-  
-  .step:not(:last-child)::after {
-    content: ''; position: absolute; left: 14px; top: 30px; bottom: -20px; width: 2px; background-color: #eee; z-index: 1;
-  }
-  .step.completed:not(:last-child)::after { background-color: #22c55e; } 
+import express from "express";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
 
-  .circle { width: 30px; height: 30px; border-radius: 50%; background-color: #eee; display: flex; justify-content: center; align-items: center; margin-right: 15px; z-index: 2; font-weight: bold; color: white; transition: 0.3s; }
-  .step.completed .circle { background-color: #22c55e; border: none; } 
-  .step.active .circle { background-color: #22c55e; box-shadow: 0 0 0 4px #dcfce7; } 
+dotenv.config();
 
-  .step-info { flex: 1; }
-  .step-title { margin: 0; font-weight: bold; font-size: 15px; color: #aaa; }
-  .step.completed .step-title, .step.active .step-title { color: #000; }
-  .step-desc { margin: 4px 0 0 0; font-size: 13px; color: #777; }
-</style>
+const app = express();
+app.use(express.json());
 
-<div class="track-container">
-  <h2 style="text-align: center; margin-bottom: 25px;">Track Your Order</h2>
-  
-  <form id="tracking-form">
-    <label style="font-weight: 600; font-size: 14px;">Order Number</label>
-    <input type="text" id="order-id" class="track-input" placeholder="e.g. #1024" required>
-    
-    <label style="font-weight: 600; font-size: 14px;">Email Address</label>
-    <input type="email" id="order-email" class="track-input" placeholder="Email used at checkout" required>
-    
-    <button type="submit" class="track-btn">Track Order</button>
-  </form>
+// ✅ CORS
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  next();
+});
 
-  <div id="error-msg" style="color: red; margin-top: 15px; text-align: center; display: none;"></div>
+const PORT = process.env.PORT || 10000;
 
-  <div class="timeline" id="timeline">
-    <div style="margin-bottom: 20px;">
-      <p style="margin:0;"><strong>Courier:</strong> <span id="ui-courier">...</span></p>
-      <p style="margin:5px 0;"><strong>Tracking No:</strong> <span id="ui-tracking">...</span></p>
-      <p style="margin:5px 0;"><strong>Est. Delivery:</strong> <span id="ui-est">...</span></p>
-      <a id="ui-link" href="#" target="_blank" style="display: none; color: #000; font-weight: bold; margin-top: 10px; text-decoration: underline;">View Live Courier Page &rarr;</a>
-    </div>
+// ENV VARIABLES
+const SHOP = process.env.SHOP;
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
 
-    <div class="step" id="step-1">
-      <div class="circle">✓</div>
-      <div class="step-info">
-        <p class="step-title">Order Placed</p>
-        <p class="step-desc">We have received your order.</p>
-      </div>
-    </div>
-    
-    <div class="step" id="step-2">
-      <div class="circle">✓</div>
-      <div class="step-info">
-        <p class="step-title">Order Picked Up</p>
-        <p class="step-desc">Handed over to the courier partner.</p>
-      </div>
-    </div>
-    
-    <div class="step" id="step-3">
-      <div class="circle">✓</div>
-      <div class="step-info">
-        <p class="step-title">In Transit</p>
-        <p class="step-desc">Package is moving between facilities.</p>
-      </div>
-    </div>
+// ✅ TOKEN CACHE SYSTEM
+let activeToken = null;
+let tokenExpiresAt = null;
 
-    <div class="step" id="step-4">
-      <div class="circle">✓</div>
-      <div class="step-info">
-        <p class="step-title">Out for Delivery</p>
-        <p class="step-desc">Out with the delivery agent reaching your door.</p>
-      </div>
-    </div>
-    
-    <div class="step" id="step-5">
-      <div class="circle">✓</div>
-      <div class="step-info">
-        <p class="step-title">Delivered</p>
-        <p class="step-desc">Package has been successfully delivered.</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-document.getElementById('tracking-form').addEventListener('submit', async function(e) {
-  e.preventDefault();
-  
-  const btn = e.target.querySelector('button');
-  const timeline = document.getElementById('timeline');
-  const errorMsg = document.getElementById('error-msg');
-  
-  btn.innerText = 'Searching...';
-  timeline.style.display = 'none';
-  errorMsg.style.display = 'none';
-
-  for(let i=1; i<=5; i++) {
-    document.getElementById(`step-${i}`).className = 'step';
+async function getAccessToken() {
+  if (activeToken && tokenExpiresAt && Date.now() < tokenExpiresAt) {
+    return activeToken;
   }
 
-  const payload = {
-    orderId: document.getElementById('order-id').value,
-    email: document.getElementById('order-email').value
-  };
+  const response = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      grant_type: "client_credentials"
+    })
+  });
 
+  const data = await response.json();
+
+  if (!data.access_token) {
+    console.error("Token Fetch Error:", data);
+    throw new Error("Failed to fetch access token from Shopify");
+  }
+
+  activeToken = data.access_token;
+  const expiresInMs = (data.expires_in || 86400) * 1000;
+  tokenExpiresAt = Date.now() + expiresInMs - (5 * 60 * 1000);
+
+  return activeToken;
+}
+
+// ✅ SUPER COURIER DETECTOR 
+function getCourierLink(courier, trackingNumber) {
+  if (!trackingNumber || trackingNumber === "Not available") return null;
+
+  const c = (courier || "").toLowerCase();
+
+  // Indian Logistics
+  if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; 
+  if (c.includes("ekart")) return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
+  if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`;
+  if (c.includes("bluedart") || c.includes("blue dart")) return `https://www.bluedart.com/tracking?track=${trackingNumber}`;
+  if (c.includes("ecom") || c.includes("ecom express")) return `https://ecomexpress.in/tracking/?awb_field=${trackingNumber}`;
+  if (c.includes("xpressbees")) return `https://www.xpressbees.com/track?awb=${trackingNumber}`;
+  if (c.includes("shadowfax")) return `https://tracker.shadowfax.in/track?order=true&awb=${trackingNumber}`;
+  if (c.includes("dtdc")) return `https://track.dtdc.in/ctbs-tracking/customerInterface.tr?wAction=infodeskTrack&trackType=AWB&strKeys=${trackingNumber}`;
+  if (c.includes("shiprocket")) return `https://www.shiprocket.in/shipment-tracking/?awb=${trackingNumber}`;
+
+  // International Logistics
+  if (c.includes("fedex")) return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  if (c.includes("dhl")) return `https://www.dhl.com/in-en/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNumber}`;
+  if (c.includes("ups")) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  
+  return `https://parcelsapp.com/en/tracking/${trackingNumber}`;
+}
+
+// ------------------------
+// TRACK ORDER API
+// ------------------------
+app.post("/track", async (req, res) => {
   try {
-    // Calling your live Render API
-    const response = await fetch('https://track11-13eq.onrender.com/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const { email, orderId } = req.body;
+
+    if (!email || !orderId) {
+      return res.json({ error: "Missing email or orderId" });
+    }
+
+    if (!SHOP || !CLIENT_ID || !CLIENT_SECRET) {
+      return res.json({ error: "API credentials missing" });
+    }
+
+    let currentToken;
+    try {
+      currentToken = await getAccessToken();
+    } catch (tokenErr) {
+      return res.json({ error: "Access token missing or failed to generate" });
+    }
+
+    const shopifyRes = await fetch(
+      `https://${SHOP}/admin/api/2023-10/orders.json?status=any&limit=50`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": currentToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const data = await shopifyRes.json();
+
+    if (!data.orders) {
+      return res.json({ error: "No orders found" });
+    }
+
+    const cleanId = orderId.replace("#", "").trim();
+
+    const order = data.orders.find((o) => {
+      return (
+        o.email.toLowerCase() === email.toLowerCase() &&
+        (o.name === orderId || o.name === `#${cleanId}` || o.order_number == cleanId)
+      );
     });
 
-    const data = await response.json();
-
-    if (data.error) {
-      errorMsg.innerText = data.error;
-      errorMsg.style.display = 'block';
-    } else {
-      document.getElementById('ui-courier').innerText = data.courier;
-      document.getElementById('ui-tracking').innerText = data.trackingNumber;
-      document.getElementById('ui-est').innerText = data.estimatedDelivery;
-      
-      const linkEl = document.getElementById('ui-link');
-      if(data.trackingUrl) {
-        linkEl.href = data.trackingUrl;
-        linkEl.style.display = 'inline-block';
-      } else {
-        linkEl.style.display = 'none';
-      }
-
-      // ✅ UPGRADED STATUS VOCABULARY MATCHER
-      const status = (data.status || "").toLowerCase();
-      let currentStep = 1;
-
-      if (status === 'delivered') {
-        currentStep = 5;
-      } else if (status === 'out_for_delivery' || status === 'attempted_delivery') {
-        currentStep = 4;
-      } else if (status === 'in_transit') {
-        currentStep = 3;
-      } else if (
-        status === 'shipped' || 
-        status === 'fulfilled' || 
-        status === 'ready_for_pickup' || 
-        status === 'confirmed' || 
-        status === 'label_printed' || 
-        status === 'label_purchased'
-      ) {
-        currentStep = 2;
-      } else {
-        currentStep = 1; 
-      }
-
-      for(let i=1; i<=5; i++) {
-        const stepEl = document.getElementById(`step-${i}`);
-        if (i < currentStep) {
-          stepEl.classList.add('completed');
-        } else if (i === currentStep) {
-          stepEl.classList.add('active');
-          if(currentStep === 5) stepEl.classList.add('completed');
-        }
-      }
-
-      timeline.style.display = 'block';
+    if (!order) {
+      return res.json({ error: "Order not found" });
     }
+
+    const fulfillment = order.fulfillments && order.fulfillments.length > 0 ? order.fulfillments[0] : null;
+
+    let trackingNumber = "Not available";
+    if (fulfillment) {
+      if (fulfillment.tracking_number) trackingNumber = fulfillment.tracking_number;
+      else if (fulfillment.tracking_numbers && fulfillment.tracking_numbers.length > 0) {
+        trackingNumber = fulfillment.tracking_numbers[0];
+      }
+    }
+
+    const courierName = fulfillment?.tracking_company || "Not assigned";
+    const trackingUrl = getCourierLink(courierName, trackingNumber);
+
+    // ✅ READ REAL SHIPMENT STATUS FROM SHOPIFY
+    let shipmentStatus = "Processing";
+    if (fulfillment) {
+      shipmentStatus = "Shipped"; 
+      if (fulfillment.shipment_status) {
+        shipmentStatus = fulfillment.shipment_status; 
+      }
+    }
+
+    // ✅ CALCULATE ESTIMATED DATE
+    let estimatedDeliveryDate = "Updating...";
+    if (fulfillment && fulfillment.created_at) {
+      const d = new Date(fulfillment.created_at);
+      d.setDate(d.getDate() + 4); 
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + " (Est.)";
+    } else if (order && order.created_at) {
+      const d = new Date(order.created_at);
+      d.setDate(d.getDate() + 6); 
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + " (Est.)";
+    }
+
+    res.json({
+      orderId: order.name,
+      status: shipmentStatus,
+      trackingNumber: trackingNumber,
+      courier: courierName,
+      trackingUrl: trackingUrl, 
+      estimatedDelivery: estimatedDeliveryDate, 
+    });
   } catch (err) {
-    errorMsg.innerText = "Failed to connect to tracking server.";
-    errorMsg.style.display = 'block';
-  } finally {
-    btn.innerText = 'Track Order';
+    console.error("ERROR:", err);
+    res.json({ error: "Server error" });
   }
 });
-</script>
+
+app.get("/", (req, res) => res.send("Tracking API Running"));
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
