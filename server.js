@@ -54,13 +54,12 @@ async function getAccessToken() {
   return activeToken;
 }
 
-// ✅ SUPER COURIER DETECTOR 
+// ✅ SUPER COURIER DETECTOR
 function getCourierLink(courier, trackingNumber) {
   if (!trackingNumber || trackingNumber === "Not available") return null;
 
   const c = (courier || "").toLowerCase();
 
-  // Indian Logistics
   if (c.includes("delhivery")) return `https://www.delhivery.com/track/package/${trackingNumber}`; 
   if (c.includes("ekart")) return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
   if (c.includes("amazon") || c.includes("swiship")) return `https://www.swiship.in/track?id=${trackingNumber}`;
@@ -71,7 +70,6 @@ function getCourierLink(courier, trackingNumber) {
   if (c.includes("dtdc")) return `https://track.dtdc.in/ctbs-tracking/customerInterface.tr?wAction=infodeskTrack&trackType=AWB&strKeys=${trackingNumber}`;
   if (c.includes("shiprocket")) return `https://www.shiprocket.in/shipment-tracking/?awb=${trackingNumber}`;
 
-  // International Logistics
   if (c.includes("fedex")) return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
   if (c.includes("dhl")) return `https://www.dhl.com/in-en/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNumber}`;
   if (c.includes("ups")) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
@@ -86,13 +84,8 @@ app.post("/track", async (req, res) => {
   try {
     const { email, orderId } = req.body;
 
-    if (!email || !orderId) {
-      return res.json({ error: "Missing email or orderId" });
-    }
-
-    if (!SHOP || !CLIENT_ID || !CLIENT_SECRET) {
-      return res.json({ error: "API credentials missing" });
-    }
+    if (!email || !orderId) return res.json({ error: "Missing email or orderId" });
+    if (!SHOP || !CLIENT_ID || !CLIENT_SECRET) return res.json({ error: "API credentials missing" });
 
     let currentToken;
     try {
@@ -112,13 +105,9 @@ app.post("/track", async (req, res) => {
     );
 
     const data = await shopifyRes.json();
-
-    if (!data.orders) {
-      return res.json({ error: "No orders found" });
-    }
+    if (!data.orders) return res.json({ error: "No orders found" });
 
     const cleanId = orderId.replace("#", "").trim();
-
     const order = data.orders.find((o) => {
       return (
         o.email.toLowerCase() === email.toLowerCase() &&
@@ -126,9 +115,7 @@ app.post("/track", async (req, res) => {
       );
     });
 
-    if (!order) {
-      return res.json({ error: "Order not found" });
-    }
+    if (!order) return res.json({ error: "Order not found" });
 
     const fulfillment = order.fulfillments && order.fulfillments.length > 0 ? order.fulfillments[0] : null;
 
@@ -143,7 +130,7 @@ app.post("/track", async (req, res) => {
     const courierName = fulfillment?.tracking_company || "Not assigned";
     const trackingUrl = getCourierLink(courierName, trackingNumber);
 
-    // ✅ READ REAL SHIPMENT STATUS FROM SHOPIFY
+    // ✅ READ REAL SHIPMENT STATUS
     let shipmentStatus = "Processing";
     if (fulfillment) {
       shipmentStatus = "Shipped"; 
@@ -152,16 +139,28 @@ app.post("/track", async (req, res) => {
       }
     }
 
-    // ✅ CALCULATE ESTIMATED DATE
+    // ✅ UPGRADED ESTIMATED DELIVERY (Creates a professional Date Range)
     let estimatedDeliveryDate = "Updating...";
-    if (fulfillment && fulfillment.created_at) {
-      const d = new Date(fulfillment.created_at);
-      d.setDate(d.getDate() + 4); 
-      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + " (Est.)";
-    } else if (order && order.created_at) {
-      const d = new Date(order.created_at);
-      d.setDate(d.getDate() + 6); 
-      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + " (Est.)";
+    
+    // First, check if Shopify actually has the exact live date from the courier
+    if (fulfillment && fulfillment.estimated_delivery_at) {
+      const d = new Date(fulfillment.estimated_delivery_at);
+      estimatedDeliveryDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    } 
+    // Otherwise, generate a safe 3-day delivery window
+    else if (fulfillment && fulfillment.created_at) {
+      const d1 = new Date(fulfillment.created_at);
+      d1.setDate(d1.getDate() + 4); // Start range 4 days after shipping
+      const d2 = new Date(fulfillment.created_at);
+      d2.setDate(d2.getDate() + 7); // End range 7 days after shipping
+      estimatedDeliveryDate = `${d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } 
+    else if (order && order.created_at) {
+      const d1 = new Date(order.created_at);
+      d1.setDate(d1.getDate() + 5); 
+      const d2 = new Date(order.created_at);
+      d2.setDate(d2.getDate() + 9); 
+      estimatedDeliveryDate = `${d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     }
 
     res.json({
