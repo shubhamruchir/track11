@@ -20,7 +20,7 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const SHOP = process.env.SHOP;
 
 // Temporary storage
-let ACCESS_TOKEN = "";
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
 
 /*
 =================================
@@ -40,13 +40,20 @@ INSTALL APP
 
 app.get("/auth", (req, res) => {
 
+  const REDIRECT_URI =
+    "https://track11-13eq.onrender.com/auth/callback";
+
   const installUrl =
     `https://${SHOP}/admin/oauth/authorize` +
     `?client_id=${CLIENT_ID}` +
     `&scope=read_orders,read_fulfillments` +
-    `&redirect_uri=https://track11-13eq.onrender.com/auth/callback`;
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+
+  console.log("INSTALL URL:");
+  console.log(installUrl);
 
   res.redirect(installUrl);
+
 });
 
 /*
