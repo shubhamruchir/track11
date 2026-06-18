@@ -24,33 +24,43 @@ const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 // COURIER TRACKING LINKS
 // ------------------------
 function getCourierLink(courier, trackingNumber) {
-  if (!trackingNumber || trackingNumber === "Not available") return null;
+  if (!trackingNumber || trackingNumber === "Not available") {
+    return null;
+  }
 
   const c = (courier || "").toLowerCase();
 
-  if (c.includes("delhivery"))
+  if (c.includes("delhivery")) {
     return `https://www.delhivery.com/track/package/${trackingNumber}`;
+  }
 
-  if (c.includes("ekart"))
+  if (c.includes("ekart")) {
     return `https://ekartlogistics.com/shipmenttrack/${trackingNumber}`;
+  }
 
-  if (c.includes("amazon") || c.includes("swiship"))
+  if (c.includes("amazon") || c.includes("swiship")) {
     return `https://www.swiship.in/track?id=${trackingNumber}`;
+  }
 
-  if (c.includes("bluedart"))
+  if (c.includes("bluedart")) {
     return `https://www.bluedart.com/tracking?track=${trackingNumber}`;
+  }
 
-  if (c.includes("ecom"))
+  if (c.includes("ecom")) {
     return `https://ecomexpress.in/tracking/?awb_field=${trackingNumber}`;
+  }
 
-  if (c.includes("xpressbees"))
+  if (c.includes("xpressbees")) {
     return `https://www.xpressbees.com/track?awb=${trackingNumber}`;
+  }
 
-  if (c.includes("shadowfax"))
+  if (c.includes("shadowfax")) {
     return `https://tracker.shadowfax.in/track?awb=${trackingNumber}`;
+  }
 
-  if (c.includes("dtdc"))
+  if (c.includes("dtdc")) {
     return `https://track.dtdc.in/ctbs-tracking/customerInterface.tr?wAction=infodeskTrack&trackType=AWB&strKeys=${trackingNumber}`;
+  }
 
   return `https://parcelsapp.com/en/tracking/${trackingNumber}`;
 }
@@ -74,9 +84,17 @@ app.post("/track", async (req, res) => {
       });
     }
 
-    // Fetch more orders
+    const cleanId = orderId.replace("#", "").trim();
+
+    console.log("=================================");
+    console.log("TRACKING REQUEST");
+    console.log("Email:", email);
+    console.log("Order:", cleanId);
+    console.log("=================================");
+
+    // Shopify Orders Fetch
     const shopifyRes = await fetch(
-      `https://${SHOP}/admin/api/2023-10/orders.json?status=any&limit=250`,
+      `https://${SHOP}/admin/api/2025-01/orders.json?status=any&limit=250`,
       {
         headers: {
           "X-Shopify-Access-Token": ACCESS_TOKEN,
@@ -85,30 +103,70 @@ app.post("/track", async (req, res) => {
       }
     );
 
+    console.log("Shopify Status:", shopifyRes.status);
+
+    if (!shopifyRes.ok) {
+      const errorText = await shopifyRes.text();
+
+      console.error("Shopify API Error:");
+      console.error(errorText);
+
+      return res.json({
+        error: "Shopify API Error"
+      });
+    }
+
     const data = await shopifyRes.json();
 
     console.log("Total Orders:", data.orders?.length);
 
-    if (!data.orders) {
+    data.orders?.forEach((o) => {
+      console.log(
+        "Order:",
+        o.name,
+        "| Email:",
+        o.email,
+        "| Order Number:",
+        o.order_number
+      );
+    });
+
+    if (!data.orders || data.orders.length === 0) {
       return res.json({
         error: "No orders returned by Shopify"
       });
     }
 
-    const cleanId = orderId.replace("#", "").trim();
-
+    // Find Order
     const order = data.orders.find((o) => {
+
       const emailMatch =
-        (o.email || "").trim().toLowerCase() ===
+        (o.email || "")
+          .trim()
+          .toLowerCase() ===
         email.trim().toLowerCase();
 
       const orderMatch =
-        o.name === orderId ||
+        String(o.order_number) === cleanId ||
         o.name === `#${cleanId}` ||
-        String(o.order_number) === cleanId;
+        o.name === orderId;
 
-      return emailMatch && orderMatch;
+      if (orderMatch) {
+        console.log(
+          "Possible Match:",
+          o.name,
+          o.email,
+          o.order_number
+        );
+      }
+
+      return orderMatch && emailMatch;
     });
+
+    console.log(
+      "FOUND ORDER:",
+      JSON.stringify(order, null, 2)
+    );
 
     if (!order) {
       return res.json({
@@ -123,31 +181,39 @@ app.post("/track", async (req, res) => {
         : null;
 
     console.log(
-      "FULFILLMENT:",
+      "FULFILLMENTS COUNT:",
+      order.fulfillments?.length || 0
+    );
+
+    console.log(
+      "FULFILLMENT DATA:",
       JSON.stringify(fulfillment, null, 2)
     );
 
-    // Tracking Number Detection
+    // ------------------------
+    // TRACKING NUMBER
+    // ------------------------
+
     let trackingNumber = "Not available";
 
     if (fulfillment) {
-      if (fulfillment.tracking_number) {
-        trackingNumber = fulfillment.tracking_number;
-      }
-      else if (
-        fulfillment.tracking_numbers &&
-        fulfillment.tracking_numbers.length > 0
-      ) {
-        trackingNumber = fulfillment.tracking_numbers[0];
-      }
-      else if (
-        fulfillment.tracking_info &&
-        fulfillment.tracking_info.length > 0 &&
-        fulfillment.tracking_info[0].number
-      ) {
-        trackingNumber = fulfillment.tracking_info[0].number;
-      }
+
+      console.log(
+        "TRACKING DATA:",
+        JSON.stringify(fulfillment, null, 2)
+      );
+
+      trackingNumber =
+        fulfillment.tracking_number ||
+        fulfillment.tracking_numbers?.[0] ||
+        fulfillment.tracking_info?.[0]?.number ||
+        fulfillment.shipment_tracking_number ||
+        "Not available";
     }
+
+    // ------------------------
+    // COURIER
+    // ------------------------
 
     const courierName =
       fulfillment?.tracking_company ||
@@ -158,7 +224,10 @@ app.post("/track", async (req, res) => {
       trackingNumber
     );
 
-    // Shipment Status
+    // ------------------------
+    // STATUS
+    // ------------------------
+
     let shipmentStatus = "Processing";
 
     if (fulfillment) {
@@ -167,7 +236,10 @@ app.post("/track", async (req, res) => {
         "In Transit";
     }
 
-    // Estimated Delivery
+    // ------------------------
+    // DELIVERY DATE
+    // ------------------------
+
     let estimatedDelivery = "Updating...";
 
     if (
@@ -178,14 +250,12 @@ app.post("/track", async (req, res) => {
         fulfillment.estimated_delivery_at
       );
 
-      estimatedDelivery = d.toLocaleDateString(
-        "en-IN",
-        {
+      estimatedDelivery =
+        d.toLocaleDateString("en-IN", {
           day: "numeric",
           month: "short",
           year: "numeric"
-        }
-      );
+        });
     }
     else if (
       fulfillment &&
@@ -206,7 +276,8 @@ app.post("/track", async (req, res) => {
         `${start.toLocaleDateString("en-IN")} - ${end.toLocaleDateString("en-IN")}`;
     }
 
-    res.json({
+    return res.json({
+      success: true,
       orderId: order.name,
       status: shipmentStatus,
       trackingNumber,
@@ -216,19 +287,23 @@ app.post("/track", async (req, res) => {
     });
 
   } catch (err) {
+    console.error("SERVER ERROR:");
     console.error(err);
 
-    res.json({
+    return res.json({
       error: err.message
     });
   }
 });
 
-// Health Check
+// ------------------------
+// HEALTH CHECK
+// ------------------------
+
 app.get("/", (req, res) => {
   res.send("Tracking API Running");
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
