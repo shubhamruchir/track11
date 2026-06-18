@@ -44,7 +44,7 @@ app.get("/auth", (req, res) => {
     `https://${SHOP}/admin/oauth/authorize` +
     `?client_id=${CLIENT_ID}` +
     `&scope=read_orders,read_fulfillments` +
-    `&redirect_uri=https://track-wzmx.onrender.com/auth/callback`;
+    `&redirect_uri=https://track11-13eq.onrender.com/auth/callback`;
 
   res.redirect(installUrl);
 });
